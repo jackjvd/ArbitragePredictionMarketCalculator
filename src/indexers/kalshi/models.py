@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 
 
 def parse_datetime(val: str) -> datetime:
@@ -15,6 +15,34 @@ def parse_datetime(val: str) -> datetime:
             micros = parts[1].ljust(6, "0")[:6]
             val = f"{parts[0]}.{micros}{tz}"
     return datetime.fromisoformat(val)
+
+
+def _to_cents(value: Optional[Union[float, int, str]]) -> Optional[int]:
+    """Normalize various price representations to integer cents."""
+    if value is None:
+        return None
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _dollars_to_cents(value: Optional[Union[float, int, str]]) -> Optional[int]:
+    """Convert dollar-denominated price to integer cents."""
+    if value is None:
+        return None
+    try:
+        return int(round(float(value) * 100))
+    except (TypeError, ValueError):
+        return None
+
+
+def _pick_price_cents(data: dict, cents_key: str, dollars_key: str) -> Optional[int]:
+    """Support both legacy *_ask (cents) and newer *_ask_dollars fields."""
+    cents = _to_cents(data.get(cents_key))
+    if cents is not None:
+        return cents
+    return _dollars_to_cents(data.get(dollars_key))
 
 
 @dataclass
@@ -78,11 +106,11 @@ class Market:
             yes_sub_title=data.get("yes_sub_title", ""),
             no_sub_title=data.get("no_sub_title", ""),
             status=data["status"],
-            yes_bid=data.get("yes_bid"),
-            yes_ask=data.get("yes_ask"),
-            no_bid=data.get("no_bid"),
-            no_ask=data.get("no_ask"),
-            last_price=data.get("last_price"),
+            yes_bid=_pick_price_cents(data, "yes_bid", "yes_bid_dollars"),
+            yes_ask=_pick_price_cents(data, "yes_ask", "yes_ask_dollars"),
+            no_bid=_pick_price_cents(data, "no_bid", "no_bid_dollars"),
+            no_ask=_pick_price_cents(data, "no_ask", "no_ask_dollars"),
+            last_price=_pick_price_cents(data, "last_price", "last_price_dollars"),
             volume=data.get("volume", 0),
             volume_24h=data.get("volume_24h", 0),
             open_interest=data.get("open_interest", 0),

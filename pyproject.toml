@@ -23,6 +23,7 @@ dependencies = [
     "simple-term-menu>=1.6.0",
     "python-dotenv>=1.2.1",
     "sentence-transformers>=5.1.2",
+    "xgboost>=2.1.4",
 ]
 
 [dependency-groups]
