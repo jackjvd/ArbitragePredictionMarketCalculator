@@ -21,7 +21,7 @@ import json
 import os
 import sys
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -118,10 +118,26 @@ def fetch_polymarket_markets() -> list[FlatMarket]:
     print("Fetching Polymarket markets...", flush=True)
     client = PolymarketClient()
     markets: list[FlatMarket] = []
+    now_utc = datetime.now(timezone.utc)
+    max_quote_age_minutes = int(os.getenv("POLYMARKET_MAX_QUOTE_AGE_MINUTES", "180"))
+    stale_filtered = 0
+    closed_book_filtered = 0
     try:
         for batch, _offset in client.iter_markets(limit=500, active=True, closed=False):
             for m in batch:
                 try:
+                    # Keep only tradable markets with recently updated quotes.
+                    if not m.accepting_orders:
+                        closed_book_filtered += 1
+                        continue
+                    if m.updated_at is None:
+                        stale_filtered += 1
+                        continue
+                    updated_at = m.updated_at.astimezone(timezone.utc)
+                    if (now_utc - updated_at) > timedelta(minutes=max_quote_age_minutes):
+                        stale_filtered += 1
+                        continue
+
                     outcomes = json.loads(m.outcomes) if isinstance(m.outcomes, str) else m.outcomes
                     prices   = json.loads(m.outcome_prices) if isinstance(m.outcome_prices, str) else m.outcome_prices
                     # Only handle binary (Yes/No) markets for now
@@ -143,6 +159,12 @@ def fetch_polymarket_markets() -> list[FlatMarket]:
                     continue
     finally:
         client.close()
+    if stale_filtered or closed_book_filtered:
+        print(
+            f"  filtered: {stale_filtered} stale quotes, "
+            f"{closed_book_filtered} non-tradable books",
+            flush=True,
+        )
     print(f"  {len(markets)} Polymarket markets loaded", flush=True)
     return markets
 
@@ -380,6 +402,11 @@ def find_matches(
 
         # Reject pairs where numeric thresholds / scopes are clearly mismatched
         if not _is_compatible(km.label, pm.label):
+            continue
+
+        # Require fully executable two-sided books on both platforms.
+        # Any missing side becomes N/A downstream and is not actionable.
+        if any(v is None for v in (km.yes_price, km.no_price, pm.yes_price, pm.no_price)):
             continue
 
         # Arbitrage edge = 100 - (cost of both legs)

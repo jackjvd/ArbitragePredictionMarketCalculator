@@ -18,6 +18,10 @@ class Market:
     closed: bool
     end_date: Optional[datetime]
     created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    best_bid: Optional[float]
+    best_ask: Optional[float]
+    accepting_orders: bool
     market_maker_address: Optional[str] = None  # FPMM address for legacy markets
 
     @classmethod
@@ -46,6 +50,10 @@ class Market:
             closed=data.get("closed", False),
             end_date=parse_time(data.get("endDate")),
             created_at=parse_time(data.get("createdAt")),
+            updated_at=parse_time(data.get("updatedAt")),
+            best_bid=float(data.get("bestBid")) if data.get("bestBid") not in (None, "") else None,
+            best_ask=float(data.get("bestAsk")) if data.get("bestAsk") not in (None, "") else None,
+            accepting_orders=bool(data.get("acceptingOrders", False)),
             market_maker_address=data.get("marketMakerAddress"),
         )
 

@@ -49,6 +49,23 @@ make analyze
 
 This opens an interactive menu to select which analysis to run. You can run all analyses or select a specific one. Output files (PNG, PDF, CSV, JSON) are saved to `output/`.
 
+### Local Frontend (Streamlit)
+
+Run the local dashboard that surfaces arbitrage outputs, labeling files, ML reports, and run controls:
+
+```bash
+uv run streamlit run app.py
+```
+
+The app starts on localhost (default Streamlit port) and includes pages for:
+- Overview metrics
+- Arbitrage explorer
+- Labeling workspace
+- ML reports + scoring
+- Top arb outputs
+- Raw data browser
+- Script run center
+
 ### Packaging Data
 
 To compress the data directory for storage/distribution:
