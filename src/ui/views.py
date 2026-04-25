@@ -439,8 +439,6 @@ def render_run_center() -> None:
             "data/labels/to_label_train.csv",
             "--val-labels",
             "data/labels/to_label_val.csv",
-            "--test-labels",
-            "data/labels/to_label_test.csv",
         ]
     elif action == "Score arb csv":
         data_file = latest_file("arb/arb_*.csv", DATA_DIR)

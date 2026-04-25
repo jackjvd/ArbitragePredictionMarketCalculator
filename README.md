@@ -78,7 +78,6 @@ Outputs:
 - `data/labels/to_label.csv` or split files:
   - `data/labels/to_label_train.csv`
   - `data/labels/to_label_val.csv`
-  - `data/labels/to_label_test.csv`
 
 ### 5) Train classifier
 
@@ -89,15 +88,14 @@ uv run -m src.ml.train --labels data/labels/to_label.csv
 # With explicit holdouts
 uv run -m src.ml.train \
   --labels data/labels/to_label_train.csv \
-  --val-labels data/labels/to_label_val.csv \
-  --test-labels data/labels/to_label_test.csv
+  --val-labels data/labels/to_label_val.csv
 ```
 
 Outputs (default `models/`):
 
 - `pair_classifier.pkl`
 - `cv_report.json`
-- optionally `val_report.json`, `test_report.json`
+- optionally `val_report.json`
 
 ### 6) Score new arb CSV with trained model
 
