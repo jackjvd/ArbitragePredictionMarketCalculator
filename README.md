@@ -1,122 +1,158 @@
 # Prediction Market Analysis
 
-A framework for analyzing prediction market data, including the largest publicly available dataset of Polymarket and Kalshi market and trade data. Provides tools for data collection, storage, and running analysis scripts that generate figures and statistics.
+For clarification the code used to pull the data from the prediciton markets was open source and this was approved by the proffesor via email.
 
-## Overview
+## Setup
 
-This project enables research and analysis of prediction markets by providing:
-- Pre-collected datasets from Polymarket and Kalshi
-- Data collection indexers for gathering new data
-- Analysis framework for generating figures and statistics
-
-Currently supported features:
-- Market metadata collection (Kalshi & Polymarket)
-- Trade history collection via API and blockchain
-- Parquet-based storage with automatic progress saving
-- Extensible analysis script framework
-
-## Installation & Usage
-
-Requires Python 3.9+. Install dependencies with [uv](https://github.com/astral-sh/uv):
+Requires Python 3.9+ and [uv](https://github.com/astral-sh/uv).
 
 ```bash
 uv sync
 ```
 
-Download and extract the pre-collected dataset (36GiB compressed):
+## Quick Start
 
 ```bash
-make setup
+# 1) Pull fresh cross-platform matches and arb CSV
+uv run arb_finder.py --similarity 0.82 --top 100
+
+# 2) Rank top opportunities by ROI
+uv run top_arb.py --top 20 --min-similarity 0.90
+
+# 3) Open local UI to view/refresh top arbs
+uv run streamlit run app.py
 ```
 
-This downloads `data.tar.zst` from [Cloudflare R2 Storage](https://s3.jbecker.dev/data.tar.zst) and extracts it to `data/`.
+## Script Runbook
 
-### Data Collection
-
-Collect market and trade data from prediction market APIs:
+### 1) Fetch and match markets (Kalshi + Polymarket)
 
 ```bash
-make index
+uv run arb_finder.py [--similarity 0.82] [--top 50]
 ```
 
-This opens an interactive menu to select which indexer to run. Data is saved to `data/kalshi/` and `data/polymarket/` directories. Progress is saved automatically, so you can interrupt and resume collection.
+Outputs:
 
-### Running Analyses
+- `data/arb/matches_<timestamp>.json`
+- `data/arb/arb_<timestamp>.csv`
+
+### 2) View current market lines only
 
 ```bash
-make analyze
+uv run list_markets.py [--kalshi] [--polymarket]
 ```
 
-This opens an interactive menu to select which analysis to run. You can run all analyses or select a specific one. Output files (PNG, PDF, CSV, JSON) are saved to `output/`.
+Outputs:
 
-### Local Frontend (Streamlit)
+- `data/markets/kalshi_<timestamp>.csv`
+- `data/markets/polymarket_<timestamp>.csv`
 
-Run the local dashboard that surfaces arbitrage outputs, labeling files, ML reports, and run controls:
+### 3) Rank best arbitrage opportunities
+
+```bash
+uv run top_arb.py [--top 20] [--min-similarity 0.90] [--file data/arb/arb_*.csv]
+```
+
+Optional sizing arguments:
+
+```bash
+uv run top_arb.py --top 20 --bankroll 1000 --allocation-pct 0.02
+```
+
+Output:
+
+- `data/top_arb/top_arb_<timestamp>.csv`
+
+### 4) Create labeling dataset
+
+```bash
+# Single file
+uv run label_pairs.py --n 500 --out data/labels/to_label.csv
+
+# Train/val/test labeling split
+uv run label_pairs.py --n 900 --split --split-prefix to_label --group-col kalshi_id
+```
+
+Outputs:
+
+- `data/labels/to_label.csv` or split files:
+  - `data/labels/to_label_train.csv`
+  - `data/labels/to_label_val.csv`
+  - `data/labels/to_label_test.csv`
+
+### 5) Train classifier
+
+```bash
+# Basic training
+uv run -m src.ml.train --labels data/labels/to_label.csv
+
+# With explicit holdouts
+uv run -m src.ml.train \
+  --labels data/labels/to_label_train.csv \
+  --val-labels data/labels/to_label_val.csv \
+  --test-labels data/labels/to_label_test.csv
+```
+
+Outputs (default `models/`):
+
+- `pair_classifier.pkl`
+- `cv_report.json`
+- optionally `val_report.json`, `test_report.json`
+
+### 6) Score new arb CSV with trained model
+
+```bash
+uv run -m src.ml.score --model models/pair_classifier.pkl --data data/arb/arb_LATEST.csv
+```
+
+Useful filter mode:
+
+```bash
+uv run -m src.ml.score \
+  --model models/pair_classifier.pkl \
+  --data data/arb/arb_LATEST.csv \
+  --true-only --min-true-prob 0.90
+```
+
+Output:
+
+- `<input_stem>_scored.csv` (or `--out` path)
+
+### 7) Local frontend
 
 ```bash
 uv run streamlit run app.py
 ```
 
-The app starts on localhost (default Streamlit port) and includes pages for:
-- Overview metrics
-- Arbitrage explorer
-- Labeling workspace
-- ML reports + scoring
-- Top arb outputs
-- Raw data browser
-- Script run center
+Use the button to refresh from live markets and rebuild top-arb outputs.
 
-### Packaging Data
-
-To compress the data directory for storage/distribution:
+## Main CLI (menu style)
 
 ```bash
+uv run main.py analyze [analysis_name|all]
+uv run main.py index
+uv run main.py package
+```
+
+Equivalent make targets:
+
+```bash
+make analyze
+make index
 make package
 ```
 
-This creates a zstd-compressed tar archive (`data.tar.zst`) and removes the `data/` directory.
+## Repo Layout
 
-## Project Structure
-
-```
-├── src/
-│   ├── analysis/           # Analysis scripts
-│   │   ├── kalshi/         # Kalshi-specific analyses
-│   │   └── polymarket/     # Polymarket-specific analyses
-│   ├── indexers/           # Data collection indexers
-│   │   ├── kalshi/         # Kalshi API client and indexers
-│   │   └── polymarket/     # Polymarket API/blockchain indexers
-│   └── common/             # Shared utilities and interfaces
-├── data/                   # Data directory (extracted from data.tar.zst)
-│   ├── kalshi/
-│   │   ├── markets/
-│   │   └── trades/
-│   └── polymarket/
-│       ├── blocks/
-│       ├── markets/
-│       └── trades/
-├── docs/                   # Documentation
-└── output/                 # Analysis outputs (figures, CSVs)
+```text
+app.py                 # Streamlit frontend
+arb_finder.py          # Live market fetch + match + arb output
+list_markets.py        # Print and save current market lines
+label_pairs.py         # Build labeling CSVs
+top_arb.py             # Rank opportunities by ROI
+src/ml/train.py        # Train classifier
+src/ml/score.py        # Score and filter pairs
+data/                  # Generated CSV/JSON/Parquet files
+models/                # Trained model + evaluation reports
 ```
 
-## Documentation
-
-- [Data Schemas](docs/SCHEMAS.md) - Parquet file schemas for markets and trades
-- [Writing Analyses](docs/ANALYSIS.md) - Guide for writing custom analysis scripts
-
-## Contributing
-
-If you'd like to contribute to this project, please open a pull-request with your changes, as well as detailed information on what is changed, added, or improved.
-
-For more information, see the [contributing guide](CONTRIBUTING.md).
-
-## Issues
-
-If you've found an issue or have a question, please open an issue [here](https://github.com/jon-becker/prediction-market-analysis/issues).
-
-## Research & Citations
-
-- Becker, J. (2026). _The Microstructure of Wealth Transfer in Prediction Markets_. Jbecker. https://jbecker.dev/research/prediction-market-microstructure
-- Le, N. A. (2026). _Decomposing Crowd Wisdom: Domain-Specific Calibration Dynamics in Prediction Markets_. arXiv. https://arxiv.org/abs/2602.19520
-
-If you have used or plan to use this dataset in your research, please reach out via [email](mailto:jonathan@jbecker.dev) or [Twitter](https://x.com/BeckerrJon) -- i'd love to hear about what you're using the data for! Additionally, feel free to open a PR and update this section with a link to your paper.
